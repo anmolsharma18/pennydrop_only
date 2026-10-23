@@ -1,0 +1,57 @@
+target/
+!.mvn/wrapper/maven-wrapper.jar
+!**/src/main/**/target/
+!**/src/test/**/target/
+.kotlin
+
+### IntelliJ IDEA ###
+.idea/modules.xml
+.idea/jarRepositories.xml
+.idea/compiler.xml
+.idea/libraries/
+*.iws
+*.iml
+*.ipr
+
+### Eclipse ###
+.apt_generated
+.classpath
+.factorypath
+.project
+.settings
+.springBeans
+.sts4-cache
+
+### NetBeans ###
+/nbproject/private/
+/nbbuild/
+/dist/
+/nbdist/
+/.nb-gradle/
+build/
+!**/src/main/**/build/
+!**/src/test/**/build/
+
+### VS Code ###
+.vscode/
+
+### Mac OS ###
+.DS_Store
+
+# Local build downloads and read-only inspection artifacts
+.mvn/repository/
+.mvn/user-home/
+.mvn/selenium-cache/
+.mvn/apache-maven-*/
+inspection/*.zip
+inspection/*versions.xml
+*.log
+data/
+
+# Machine-specific project settings and run/inspection evidence may contain QA details.
+/.idea/
+/inspection/
+.env
+.env.*
+!.env.example
+/smtp-local.ps1
