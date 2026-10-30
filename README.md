@@ -4,7 +4,9 @@ This reuses the IntelliJ workspace's Maven project (`org.example:Pennydroponly`)
 
 ## Setup and launch
 
-Quick launch on this Windows workspace: run `powershell -ExecutionPolicy Bypass -File .\start-portal.ps1` from the project folder. It starts the existing built JAR in the background, reuses the downloaded browser cache, and waits for an HTTP 200 portal response. It does not create a new KYC run; saved schedules are resumed according to the recovery rules below. Logs and the process ID are in `inspection/portal.log`, `portal-error.log`, and `portal.pid`.
+Quick launch on this 
+
+Windows workspace: run `powershell -ExecutionPolicy Bypass -File .\start-portal.ps1` from the project folder. It starts the existing built JAR in the background, reuses the downloaded browser cache, and waits for an HTTP 200 portal response. It does not create a new KYC run; saved schedules are resumed according to the recovery rules below. Logs and the process ID are in `inspection/portal.log`, `portal-error.log`, and `portal.pid`.
 
 1. Install a JDK 17 (or a supported newer JDK), and set `JAVA_HOME` to its installation directory. In IntelliJ, reload `pom.xml` as a Maven project, choose that JDK for the project and Maven runner, and use language level 17. This workspace's project SDK was changed from JDK 26 to its already registered `temurin-21` SDK, with language level 17; builds use `--release 17`.
 2. In PowerShell, from this project directory:
@@ -201,7 +203,9 @@ The single **API responses** sheet contains run metadata and one row per capture
 
 Attachments are prepared once and reused for the individual recipient messages. The CSV is always included when it fits within `portal.mail.max-attachment-bytes` (18 MiB unencoded by default). Missing, unavailable, or oversized screenshots are listed as attachment notes in the email, while available evidence is still sent. Email diagnostics list attachment filenames/count/bytes, never credentials. Automation status is preserved and the journey/deletion is never repeated. SMTP failures remain separate; there is no automatic email retry. Attachment tests use only a localhost SMTP server, fixture screenshots and fixture API events. No live emails or automation submissions are used in these tests.
 
-#   p e n n y d r o p _ o n l y  
+#   p e n n y d r o p _ o n l y 
  
-#   p e n n y d r o p s i n g l e  
+ 
+#   p e n n y d r o p s i n g l e 
+ 
  
