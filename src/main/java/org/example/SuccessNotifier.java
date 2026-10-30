@@ -37,28 +37,33 @@ public class SuccessNotifier {
     public boolean configured(){return configured;}
     void afterRun(RunRecord run,DeleteInput input){
         List<String> recipients=EmailRecipients.unique(input.notificationEmails());
-        if(!"SUCCEEDED".equals(run.status)){outcome(run,"SKIPPED",recipients.size(),0,"No email: automation did not succeed");return;}
         if(recipients.isEmpty()){outcome(run,"SKIPPED",0,0,"No notification recipients selected");return;}
-        if(!configured){outcome(run,"NOT_CONFIGURED",recipients.size(),0,"Automation succeeded; email was not sent because SMTP is not configured");return;}
-        final List<RunEmailAttachments.Attachment> attachments;
-        try{attachments=RunEmailAttachments.prepare(run,maxAttachmentBytes);}
-        catch(Exception e){outcome(run,"ATTACHMENT_FAILED",recipients.size(),0,"Automation succeeded; email attachments could not be prepared (missing files or size limit). No email was sent");return;}
+        if(!configured){outcome(run,"NOT_CONFIGURED",recipients.size(),0,"Run ended; email was not sent because SMTP is not configured");return;}
+        List<RunEmailAttachments.Attachment> attachments;
+        List<String> notes;
+        try{var prepared=RunEmailAttachments.prepare(run,maxAttachmentBytes);attachments=prepared.attachments();notes=prepared.notes();}
+        catch(RuntimeException e){attachments=List.of();notes=List.of("Attachments could not be prepared; review the run report in the portal.");}
+        run.diagnostic("emailAttachmentNotes",notes);
         run.diagnostic("emailAttachments",Map.of("fileNames",attachments.stream().map(RunEmailAttachments.Attachment::name).toList(),"count",attachments.size(),"totalBytes",attachments.stream().mapToLong(a->a.bytes().length).sum()));
         int sent=0;
         for(String recipient:recipients){
             try{
             var message=sender.createMimeMessage();var helper=new MimeMessageHelper(message,true,"UTF-8");helper.setFrom(from);helper.setTo(recipient);
-            helper.setSubject("KYC automation succeeded - "+run.id);
-            helper.setText("Automation completed successfully.\nRun: "+run.id+"\nType: "+run.kind+"\nFinished: "+run.finishedAt+
+            helper.setSubject("KYC automation "+run.status.toLowerCase(Locale.ROOT)+" - "+run.id);
+            helper.setText(("SUCCEEDED".equals(run.status)?"Automation completed successfully.":"Automation ended with status: "+run.status+".")+"\nRun: "+run.id+"\nType: "+run.kind+"\nFinished: "+run.finishedAt+
+                "\nWorkflow stage: "+run.workflowStage+
+                (run.error==null?"":"\nFailure: "+run.error)+
                 "\nApplicant: "+input.name()+"\nMobile: "+mask(input.mobile())+"\nAccount: "+mask(input.accountNumber())+
                 "\nIFSC: "+input.ifsc()+"\nBrowser request hops captured: "+run.network.snapshot().size()+
-                "\nAttached: run screenshots (PNG) and captured API responses (Excel).\n");
+                "\nAvailable run screenshots (PNG) and captured API response table (CSV) are attached."+
+                "\nCSV includes observed status codes and network errors; response bodies are not captured."+
+                (notes.isEmpty()?"":"\nAttachment notes:\n"+String.join("\n",notes))+"\n");
             for(var attachment:attachments)helper.addAttachment(attachment.name(),new ByteArrayResource(attachment.bytes()),attachment.contentType());
             sender.send(message);sent++;
             }catch(MailException|jakarta.mail.MessagingException e){/* Do not expose server responses, credentials, or recipient addresses. No automatic retry. */}
         }
         outcome(run,sent==recipients.size()?"ACCEPTED_BY_SMTP":sent>0?"PARTIAL":"FAILED",recipients.size(),sent,
-            sent==recipients.size()?"Success notifications accepted by SMTP; inbox delivery is not guaranteed":"Some success notifications were not accepted by SMTP; check sender settings. No automatic retry");
+            sent==recipients.size()?"Run notifications accepted by SMTP; inbox delivery is not guaranteed":"Some run notifications were not accepted by SMTP; check sender settings. No automatic retry");
     }
     private static String mask(String value){return "****"+value.substring(Math.max(0,value.length()-4));}
     private static void outcome(RunRecord run,String status,int recipients,int accepted,String message){

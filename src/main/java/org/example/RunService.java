@@ -31,7 +31,13 @@ public class RunService {
         RunRecord run=new RunRecord(kind); history.put(run.id,run); active=true;
         run.notificationPending=!input.notificationEmails().isEmpty();
         if(scheduleId!=null)run.diagnostic("scheduleId",scheduleId);
-        worker.submit(()->{ try { action.accept(run);
+        worker.submit(()->{ try {
+                try{action.accept(run);}catch(RuntimeException e){
+                    run.status=e instanceof CancellationException?"CANCELLED":"FAILED";
+                    run.finishedAt=java.time.Instant.now().toString();
+                    run.error="Automation stopped unexpectedly ("+e.getClass().getSimpleName()+"); review the run diagnostics";
+                    run.network.freeze();
+                }
                 try{notifications.afterRun(run,input);}catch(RuntimeException e){run.diagnostic("emailNotification",Map.of("status","FAILED","message","Notification processing failed; automation was not retried"));}
             }
             finally { run.notificationPending=false;synchronized(this) { active=false; } } });

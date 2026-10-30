@@ -17,19 +17,31 @@ function notificationRecipients(){
  return [...new Map(emails.map(e=>[e.toLowerCase(),e])).values()];
 }
 function applySaved(values){for(const [key,value] of Object.entries(values))if(savedFields.includes(key))form.elements[key].value=value;form.elements.confirmAccountNumber.setCustomValidity('');otpVisibility();}
-async function persistDetails(){
+let autoSaveTimer, draftVersion=0, persistenceQueue=Promise.resolve();
+async function persistDetails(showMessage=true){
  if(notificationRecipients()===null)throw new Error('Please correct notification email addresses before saving.');
  const values=Object.fromEntries(savedFields.map(key=>[key,form.elements[key].value]));
- await api('/api/saved-details',{method:'PUT',headers:scheduleHeaders(),body:JSON.stringify(values)});
- setText('#savedDetailsMessage','Details and notification addresses saved on this computer. They remain until you save changes or clear them.');
+ const pending=persistenceQueue.catch(()=>{}).then(()=>api('/api/saved-details',{method:'PUT',headers:scheduleHeaders(),body:JSON.stringify(values)}));
+ persistenceQueue=pending;await pending;
+ if(showMessage)setText('#savedDetailsMessage','Details and notification addresses saved on this computer. They remain until you click Clear saved details.');
+}
+function autoSaveDetails(delay=350){
+ clearTimeout(autoSaveTimer);
+ const version=++draftVersion;setText('#savedDetailsMessage','Saving details…');
+ autoSaveTimer=setTimeout(async()=>{try{await persistDetails(false);if(version===draftVersion)setText('#savedDetailsMessage','Details saved automatically. They remain until you click Clear saved details.');}catch(e){/* Keep the last valid encrypted draft while a field, usually email, is incomplete. */}},delay);
+}
+for(const field of form.elements)if(field.name&&savedFields.includes(field.name)){
+ field.addEventListener('input',()=>autoSaveDetails());
+ field.addEventListener('change',()=>autoSaveDetails(0));
 }
 $('#saveDetails').addEventListener('click',async()=>{try{setText('#formError','');await persistDetails();}catch(e){setText('#formError',e.message);}});
 $('#clearDetails').addEventListener('click',async()=>{try{
+ clearTimeout(autoSaveTimer);
  const values=await api('/api/saved-details',{method:'DELETE',headers:scheduleHeaders()});applySaved(values);
  setText('#savedDetailsMessage','Saved details and email addresses cleared. Existing schedules keep their own saved inputs.');
 }catch(e){setText('#formError',e.message);}});
 async function api(path,options){const response=await fetch(path,{cache:'no-store',...options}); const data=await response.json(); if(!response.ok)throw new Error([data.error,...(data.details??[])].join('\n'));return data;}
-function render(run){currentRun=run;setText('#status',run.status);setText('#step',run.step);setText('#runId',`Run ${run.id} · ${run.startedAt}`);setText('#runError',run.error);setText('#emailOutcome',run.notificationPending?'Preparing success notification after this run':(run.diagnostics?.emailNotification?.message??''));$('#download').disabled=false;
+function render(run){currentRun=run;setText('#status',run.status);setText('#step',run.step);setText('#runId',`Run ${run.id} · ${run.startedAt}`);setText('#runError',run.error);setText('#emailOutcome',run.notificationPending?'Preparing notification after this run':(run.diagnostics?.emailNotification?.message??''));$('#download').disabled=false;
  const shots=run.screenshots??[];const signature=shots.map(s=>s.url).join('|');$('#screenshotsPanel').hidden=!shots.length;
  setText('#resultPageUrl',run.diagnostics?.resultPage?.url?`Resulting page: ${run.diagnostics.resultPage.url}`:'');
  if(signature!==screenshotSignature){screenshotSignature=signature;$('#screenshotGallery').replaceChildren(...shots.map(s=>{const figure=document.createElement('figure');const caption=document.createElement('figcaption');caption.textContent=({'bank-popup':'Bank popup when displayed','bank-popup-before-proceed':'Bank popup immediately before Proceed','result-page':'Page after popup Proceed','admin-matched-entry':'Matched maker-checker entry','admin-delete-confirmation':'Deletion reason before Confirm Delete','admin-delete-success':'Admin deletion success popup','failure':'Failure screenshot'})[s.label]??s.label;const link=document.createElement('a');link.href=s.url;link.target='_blank';link.rel='noopener';const img=document.createElement('img');img.src=s.url;img.alt=caption.textContent;link.append(img);figure.append(caption,link);return figure;}));}
@@ -73,7 +85,7 @@ $('#scheduleButton').addEventListener('click',async()=>{
  try{await persistDetails();await api('/api/schedules',{method:'POST',headers:scheduleHeaders(),body:JSON.stringify({input,scheduledLocalTime})});setText('#scheduleMessage','Saved. This schedule will use the form values saved now.');await refreshSchedules();}catch(e){setText('#formError',e.message);}finally{$('#scheduleButton').disabled=false;}
 });
 async function scheduleAction(s,action){try{
- if(action==='load'){const saved=await api(`/api/schedules/${s.id}/inputs`,{headers:scheduleHeaders()});for(const [key,value] of Object.entries(saved.input))if(form.elements[key])form.elements[key].value=Array.isArray(value)?value.join(', '):(value??'');form.elements.scheduledLocalTime.value=saved.scheduledLocalTime;otpVisibility();setText('#scheduleMessage','Saved inputs loaded. Changing the form does not change an existing schedule.');form.scrollIntoView({behavior:'smooth'});}
+ if(action==='load'){const saved=await api(`/api/schedules/${s.id}/inputs`,{headers:scheduleHeaders()});for(const [key,value] of Object.entries(saved.input))if(form.elements[key])form.elements[key].value=Array.isArray(value)?value.join(', '):(value??'');form.elements.scheduledLocalTime.value=saved.scheduledLocalTime;otpVisibility();await persistDetails(false);setText('#scheduleMessage','Saved inputs loaded and retained in the form. Changing the form does not change an existing schedule.');form.scrollIntoView({behavior:'smooth'});}
  else if(action==='report'){const report=await api(`/api/schedules/${s.id}/report`);clearTimeout(polling);render(report);if(!terminal(report.status))watch(report.id);}
  else{await api(`/api/schedules/${s.id}${action==='cancel'?'/cancel':''}`,{method:action==='cancel'?'POST':'DELETE',headers:scheduleHeaders()});await refreshSchedules();}
  }catch(e){setText('#scheduleError',e.message);}}
@@ -90,6 +102,6 @@ form.elements.accountNumber.addEventListener('input',()=>form.elements.confirmAc
 $('#history').addEventListener('change',async()=>{const runs=await api('/api/runs');const active=runs.find(r=>!finished(r));if(active){$('#history').value=active.id;watch(active.id);}else if($('#history').value)watch($('#history').value);});
 $('#download').addEventListener('click',()=>{if(!currentRun)return;const url=URL.createObjectURL(new Blob([JSON.stringify(currentRun,null,2)],{type:'application/json'}));const a=document.createElement('a');a.href=url;a.download=`kyc-run-${currentRun.id}.json`;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);});
 $('#cancel').addEventListener('click',async()=>{if(!currentRun||finished(currentRun))return;$('#cancel').disabled=true;try{await api(`/api/runs/${encodeURIComponent(currentRun.id)}/cancel`,{method:'POST',headers:{'X-Portal-Token':config.runToken}});await watch(currentRun.id);}catch(e){setText('#runError',e.message);}});
-(async()=>{try{config=await api('/api/config');defaults();const saved=await api('/api/saved-details',{headers:scheduleHeaders()});applySaved(saved.values);setText('#emailSetup',saved.emailConfigured?'Email sender configured. Success notifications use the recipients submitted for each run.':'Email delivery needs SMTP setup on this computer. Addresses can be saved now; runs will report NOT_CONFIGURED until a sender is configured.');$("#saveDetails").disabled=false;$("#clearDetails").disabled=false;$('#scheduleButton').disabled=false;setText('#locatorWarning',config.locatorWarning);setText('#cleanupNotice',config.adminCleanupEnabled?'After result capture, waits 10 seconds, signs into maker-checker and deletes only the matched Pennydrop Only / Verify entry using Duplicate entry. Admin API responses and screenshots appear in this monitor.':'Admin cleanup is disabled.');const runs=await refreshHistory();const active=runs.find(r=>!finished(r));if(active){$('#history').value=active.id;watch(active.id);}else runButtons(false);schedulePoll();}catch(e){setText('#formError',`Portal initialization failed: ${e.message}`);}})();
+(async()=>{try{config=await api('/api/config');defaults();const saved=await api('/api/saved-details',{headers:scheduleHeaders()});applySaved(saved.values);setText('#emailSetup',saved.emailConfigured?'Email sender configured. Notifications for successful, failed and cancelled runs use the recipients submitted for each run.':'Email delivery needs SMTP setup on this computer. Addresses can be saved now; runs will report NOT_CONFIGURED until a sender is configured.');$("#saveDetails").disabled=false;$("#clearDetails").disabled=false;$('#scheduleButton').disabled=false;setText('#locatorWarning',config.locatorWarning);setText('#cleanupNotice',config.adminCleanupEnabled?'After result capture, waits 10 seconds, signs into maker-checker and deletes only the matched Pennydrop Only / Verify entry using Duplicate entry. Admin API responses and screenshots appear in this monitor.':'Admin cleanup is disabled.');const runs=await refreshHistory();const active=runs.find(r=>!finished(r));if(active){$('#history').value=active.id;watch(active.id);}else runButtons(false);schedulePoll();}catch(e){setText('#formError',`Portal initialization failed: ${e.message}`);}})();
 
 

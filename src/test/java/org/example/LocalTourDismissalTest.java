@@ -17,7 +17,7 @@ class LocalTourDismissalTest {
     @TempDir Path directory;
 
     @ParameterizedTest
-    @ValueSource(strings={"normal", "intercepted", "hidden-first", "library-stop", "broken-api", "force"})
+    @ValueSource(strings={"normal", "intercepted", "hidden-first", "library-stop", "broken-api", "force", "delayed"})
     void closesTourWithoutRemovingBusinessDialogs(String mode) throws Exception {
         String handler = mode.equals("library-stop") || mode.equals("broken-api") || mode.equals("force") ? "" :
                 "document.querySelector('.guided-tour-step').remove()";
@@ -26,28 +26,32 @@ class LocalTourDismissalTest {
         String api = mode.equals("library-stop") ? "var tourguide={stop(){document.querySelector('.guided-tour-step').remove()}};" :
                 mode.equals("broken-api") ? "var tourguide={stop(){throw new Error('Fixture broken stop')}};" : "";
         Path page=directory.resolve("tour.html");
-        Files.writeString(page,"<html><body class='guided-tour no-scroll'>"+first+
-            "<div id='deleteModal'>Business confirmation</div><div class='overlay-bg'>Loading indicator</div>"+
+        String tour = mode.equals("delayed") ? "" :
             "<div class='guided-tour-step'><div class='guided-tour-step-tooltip'><span title='End tour' onclick=\""+handler+
-            "\">End tour</span></div></div>"+blocker+"<script>"+api+"</script></body></html>");
-        ChromeOptions options=new ChromeOptions();options.setBrowserVersion("151");options.addArguments("--headless=new","--window-size=1440,1000");
+            "\">End tour</span></div></div>";
+        Files.writeString(page,"<html><body class='"+(mode.equals("delayed")?"":"guided-tour no-scroll")+"'>"+first+
+            "<div id='deleteModal'>Business confirmation</div><div class='overlay-bg'>Loading indicator</div>"+
+            tour+blocker+"<script>"+api+"</script></body></html>");
+        ChromeOptions options=new ChromeOptions();options.setBrowserVersion("151");options.addArguments("--headless=new","--disable-gpu","--no-sandbox","--window-size=1440,1000");
         if(System.getProperty("localChromeBinary")!=null)options.setBinary(System.getProperty("localChromeBinary"));
         ChromeDriver driver=new ChromeDriver(options);
         try {
             driver.get(page.toUri().toString());
             RunRecord run=new RunRecord(RunRecord.Kind.DELETE_ONLY);
             AdminTourDismissal guard=new AdminTourDismissal();
+            guard.dismissIfVisible(driver,run);
+            if(mode.equals("delayed"))((JavascriptExecutor)driver).executeScript("""
+                document.body.classList.add('guided-tour','no-scroll');
+                document.body.insertAdjacentHTML('beforeend',
+                  `<div class="guided-tour-step"><div class="guided-tour-step-highlight"></div><div class="guided-tour-step-tooltip"><span title="End tour">End tour</span></div></div>`);
+                """);
             new WebDriverWait(driver,Duration.ofSeconds(10)).until(d->{guard.dismissIfVisible(d,run);return !JourneyPage.visible(d,AdminTourDismissal.VISIBLE);});
             guard.dismissIfVisible(driver,run);
             var diagnostics=(java.util.Map<?,?>)run.view().get("diagnostics");
             assertThat(diagnostics.get("adminTourDismissed")).isEqualTo(true);
+            assertThat(diagnostics.get("adminTourGuardArmed")).isEqualTo(true);
             assertThat(diagnostics.get("adminTourLocator")).isEqualTo("(//span[@title='End tour'])[1]");
-            assertThat(diagnostics.get("adminTourMethod")).isEqualTo(switch(mode){
-                case "normal" -> "selenium-click";
-                case "intercepted", "hidden-first" -> "javascript-click";
-                case "library-stop" -> "tourguide-stop";
-                default -> "force-tour-dom-cleanup";
-            });
+            assertThat(diagnostics.get("adminTourMethod")).isEqualTo("javascript-force-close-with-observer");
             assertThat(driver.findElement(By.id("deleteModal")).isDisplayed()).isTrue();
             assertThat(driver.findElement(By.cssSelector(".overlay-bg")).isDisplayed()).isTrue();
             run.requestCancel();assertThatThrownBy(()->guard.dismissIfVisible(driver,run)).isInstanceOf(java.util.concurrent.CancellationException.class);

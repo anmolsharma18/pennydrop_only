@@ -2,69 +2,77 @@ package org.example;
 
 import org.openqa.selenium.*;
 
-/** Bounded escalation for onboarding only; never retries a business action. */
+/** Removes only the verified Tourguide onboarding UI and keeps it from racing later admin clicks. */
 final class AdminTourDismissal {
     static final By END = By.xpath("(//span[@title='End tour'])[1]");
     static final By VISIBLE = By.cssSelector(".guided-tour-step,.guided-tour-step-highlight,.guided-tour-step-tooltip");
-    private int phase;
-    private long nextAttempt;
+    private boolean armedReported;
+    private long reportedRemoved;
 
     void dismissIfVisible(WebDriver driver, RunRecord run) {
         run.checkCancelled();
-        if (!JourneyPage.visible(driver, VISIBLE)) {
-            if (phase > 0) {
-                run.diagnostic("adminTourDismissed", true);
-                run.stage("Admin onboarding tour closed; disappearance verified");
-                phase = 0;
-            }
-            return;
-        }
-        if (System.nanoTime() < nextAttempt) return;
-        run.diagnostic("adminTourLocator", "(//span[@title='End tour'])[1]");
-        run.diagnostic("adminTourDismissed", false);
-        var matches = driver.findElements(END);
-        run.diagnostic("adminTourCloseControl", matches.isEmpty() ? "absent" :
-                "visible=" + matches.get(0).isDisplayed() + ", enabled=" + matches.get(0).isEnabled());
-        JavascriptExecutor js = (JavascriptExecutor) driver;
-        int attempt = phase++;
-        nextAttempt = System.nanoTime() + java.time.Duration.ofMillis(700).toNanos();
         try {
-            switch (attempt) {
-                case 0 -> {
-                    run.stage("Ending admin onboarding tour using supplied first End tour span");
-                    run.diagnostic("adminTourMethod", "selenium-click");
-                    if (!matches.isEmpty()) { matches.get(0).click(); run.diagnostic("adminTourEndClicked", true); }
+            @SuppressWarnings("unchecked")
+            var result = (java.util.Map<String,Object>) ((JavascriptExecutor) driver).executeScript("""
+                const selector='.guided-tour-step,.guided-tour-step-highlight,.guided-tour-step-tooltip';
+                const closeTour=()=>{
+                  const before=[...document.querySelectorAll(selector)];
+                  const detected=before.some(e=>e.getClientRects().length>0) ||
+                    document.documentElement.classList.contains('guided-tour') ||
+                    document.body.classList.contains('guided-tour');
+                  let endClicked=false, stopCalled=false;
+                  const end=document.evaluate("(//span[@title='End tour'])[1]",document,null,
+                    XPathResult.FIRST_ORDERED_NODE_TYPE,null).singleNodeValue;
+                  if(end){try{end.click();endClicked=true;}catch(e){}}
+                  try{
+                    if(typeof window.tourguide!=='undefined' && window.tourguide &&
+                        typeof window.tourguide.stop==='function'){
+                      window.tourguide.stop();stopCalled=true;
+                    }
+                  }catch(e){}
+                  const remaining=[...document.querySelectorAll(selector)];
+                  remaining.forEach(e=>e.remove());
+                  [document.documentElement,document.body].forEach(e=>{
+                    if(e.classList.contains('guided-tour')) e.classList.remove('guided-tour');
+                    if(e.classList.contains('no-scroll')) e.classList.remove('no-scroll');
+                  });
+                  if(window.__pennyDropTourGuard) window.__pennyDropTourGuard.removed+=remaining.length;
+                  return {detected,endClicked,stopCalled,removed:remaining.length};
+                };
+                let installed=false;
+                if(!window.__pennyDropTourGuard){
+                  const guard={removed:0,observer:null};
+                  window.__pennyDropTourGuard=guard;
+                  guard.observer=new MutationObserver(()=>closeTour());
+                  guard.observer.observe(document.documentElement,{childList:true,subtree:true,
+                    attributes:true,attributeFilter:['class']});
+                  installed=true;
                 }
-                case 1 -> {
-                    run.stage("Tour remains open; JavaScript-clicking supplied End tour span");
-                    run.diagnostic("adminTourMethod", "javascript-click");
-                    if (!matches.isEmpty()) { js.executeScript("arguments[0].click();", matches.get(0)); run.diagnostic("adminTourEndClicked", true); }
-                }
-                case 2 -> {
-                    run.stage("Tour remains open; invoking available tourguide.stop() API");
-                    run.diagnostic("adminTourMethod", "tourguide-stop");
-                    Object stopped = js.executeScript("if(typeof tourguide!=='undefined' && tourguide && typeof tourguide.stop==='function'){tourguide.stop();return true;}return false;");
-                    run.diagnostic("adminTourStopAvailable", stopped);
-                }
-                case 3 -> {
-                    run.stage("Force-closing remaining onboarding tour elements");
-                    run.diagnostic("adminTourMethod", "force-tour-dom-cleanup");
-                    // Verified Tourguide 0.2.0 wrapper classes. Do not remove loading overlays or business modals.
-                    Object removed = js.executeScript("""
-                        const nodes=[...document.querySelectorAll('.guided-tour-step,.guided-tour-step-highlight,.guided-tour-step-tooltip')];
-                        nodes.forEach(e=>e.remove());
-                        [document.documentElement,document.body].forEach(e=>e.classList.remove('guided-tour','no-scroll'));
-                        return nodes.length;
-                        """);
-                    run.diagnostic("adminTourForcedElementsRemoved", removed);
-                }
-                default -> throw new IllegalStateException("Admin onboarding tour remains visible after bounded close fallbacks; stopped before further admin actions");
+                const result=closeTour();
+                result.installed=installed;
+                result.totalRemoved=window.__pennyDropTourGuard.removed;
+                return result;
+                """);
+            if (!armedReported || Boolean.TRUE.equals(result.get("installed"))) {
+                run.diagnostic("adminTourGuardArmed", true);
+                armedReported = true;
             }
-        } catch (ElementNotInteractableException | StaleElementReferenceException e) {
-            run.diagnostic("adminTourClickFailure", e.getClass().getSimpleName());
-        } catch (JavascriptException e) {
+            long totalRemoved=((Number)result.get("totalRemoved")).longValue();
+            if (Boolean.TRUE.equals(result.get("detected")) || ((Number)result.get("removed")).longValue() > 0 || totalRemoved > reportedRemoved) {
+                run.diagnostic("adminTourLocator", "(//span[@title='End tour'])[1]");
+                run.diagnostic("adminTourMethod", "javascript-force-close-with-observer");
+                run.diagnostic("adminTourEndClicked", result.get("endClicked"));
+                run.diagnostic("adminTourStopAvailable", result.get("stopCalled"));
+                run.diagnostic("adminTourForcedElementsRemoved", result.get("removed"));
+                run.diagnostic("adminTourDismissed", true);
+                run.stage("Admin onboarding tour force-closed; automatic tour guard remains active");
+            }
+            reportedRemoved=totalRemoved;
+            if (JourneyPage.visible(driver, VISIBLE))
+                throw new IllegalStateException("Admin onboarding tour remains visible after forced JavaScript cleanup; stopped before further admin actions");
+        } catch (JavascriptException | ClassCastException e) {
             run.diagnostic("adminTourScriptFailure", e.getClass().getSimpleName());
-            if (attempt >= 3) throw new IllegalStateException("Unable to force-close the onboarding tour; stopped before further admin actions", e);
+            throw new IllegalStateException("Unable to install the admin onboarding tour guard; stopped before further admin actions", e);
         }
     }
 }

@@ -11,7 +11,6 @@ import org.springframework.mail.javamail.JavaMailSenderImpl;
 import org.springframework.mail.javamail.JavaMailSender;
 import jakarta.mail.*;
 import jakarta.mail.internet.MimeMessage;
-import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
@@ -48,7 +47,7 @@ class SuccessNotifierTest {
                     List<BodyPart> attachments=parts.stream().filter(p->{try{return p.getFileName()!=null;}catch(Exception e){throw new RuntimeException(e);}}).toList();
                     assertThat(attachments).hasSize(3);
                     for(BodyPart part:attachments){
-                        if(part.getFileName().endsWith(".xlsx")){assertThat(part.getContentType()).startsWith(ApiResponseWorkbook.MIME);try(XSSFWorkbook book=new XSSFWorkbook(part.getInputStream())){assertThat(book.getSheetAt(0).getRow(7).getCell(4).getNumericCellValue()).isEqualTo(200);}}
+                        if(part.getFileName().endsWith(".csv")){assertThat(part.getContentType()).startsWith("text/csv");assertThat(new String(part.getInputStream().readAllBytes(),StandardCharsets.UTF_8)).contains("\"HTTP status\"","\"200\"","fixture-request").doesNotContain("private-query");}
                         else assertThat(part.getInputStream().readAllBytes()).isEqualTo(EmailAttachmentFixtures.PNG);
                     }
                     var text=parts.stream().filter(p->{try{return p.isMimeType("text/plain");}catch(Exception e){throw new RuntimeException(e);}}).findFirst().orElseThrow();
@@ -59,9 +58,8 @@ class SuccessNotifierTest {
             }finally{executor.shutdownNow();}
         }
     }
-    @Test void failuresAndCancellationNeverSendAndMailFailureNeverChangesAutomationSuccess()throws Exception{
+    @Test void noRecipientsAndMissingSmtpAreExplicitAndMailFailurePreservesRunStatus()throws Exception{
         JavaMailSender sender=mock(JavaMailSender.class);SuccessNotifier notifier=new SuccessNotifier(sender,"sender@example.test",true);
-        for(String state:List.of("FAILED","CANCELLED")){RunRecord run=run(state);notifier.afterRun(run,input(List.of("one@example.test")));assertThat(outcome(run).get("status")).isEqualTo("SKIPPED");}
         notifier.afterRun(run("SUCCEEDED"),input(List.of()));verifyNoInteractions(sender);
         RunRecord missing=run("SUCCEEDED");new SuccessNotifier(sender,"sender@example.test",false).afterRun(missing,input(List.of("one@example.test")));verifyNoInteractions(sender);assertThat(outcome(missing).get("status")).isEqualTo("NOT_CONFIGURED");
         when(sender.createMimeMessage()).thenAnswer(call->new MimeMessage(Session.getInstance(new Properties())));
@@ -69,12 +67,36 @@ class SuccessNotifierTest {
         RunRecord run=run("SUCCEEDED");EmailAttachmentFixtures.screenshot(run,"result-page");notifier.afterRun(run,input(List.of("one@example.test")));assertThat(run.status).isEqualTo("SUCCEEDED");assertThat(outcome(run).get("status")).isEqualTo("FAILED");
         verify(sender,times(1)).send(any(MimeMessage.class));assertThat(run.view().toString()).doesNotContain("private SMTP server feedback");
     }
-    @Test void attachmentFailureStopsBeforeAnyEmailIsSent()throws Exception{
-        JavaMailSender sender=mock(JavaMailSender.class);RunRecord missing=run("SUCCEEDED");
+    @Test void everyOutcomeSendsAvailableEvidenceIncludingAdminCredentialFailures()throws Exception{
+        JavaMailSender sender=mock(JavaMailSender.class);
+        when(sender.createMimeMessage()).thenAnswer(call->new MimeMessage(Session.getInstance(new Properties())));
+        doAnswer(call->{((MimeMessage)call.getArgument(0)).saveChanges();return null;}).when(sender).send(any(MimeMessage.class));
+        for(String state:List.of("SUCCEEDED","FAILED","CANCELLED")){
+            RunRecord run=run(state);run.error=state.equals("FAILED")?"IllegalStateException: Admin credentials unavailable":null;
+            EmailAttachmentFixtures.screenshot(run,"failure");EmailAttachmentFixtures.request(run,"r1");EmailAttachmentFixtures.complete(run,"r1",500);run.network.freeze();
+            new SuccessNotifier(sender,"sender@example.test",true).afterRun(run,input(List.of("one@example.test")));
+            assertThat(run.status).isEqualTo(state);assertThat(outcome(run).get("status")).isEqualTo("ACCEPTED_BY_SMTP");
+        }
+        var captured=org.mockito.ArgumentCaptor.forClass(MimeMessage.class);verify(sender,times(3)).send(captured.capture());
+        for(int i=0;i<3;i++){
+            MimeMessage message=captured.getAllValues().get(i);assertThat(message.getSubject()).contains(List.of("succeeded","failed","cancelled").get(i));
+            List<BodyPart> parts=new ArrayList<>();collect(message,parts);
+            assertThat(parts.stream().filter(p->{try{return p.getFileName()!=null;}catch(Exception e){throw new RuntimeException(e);}})).hasSize(2);
+            if(i==1)assertThat(parts.get(0).getContent().toString()).contains("Admin credentials unavailable","FAILED");
+        }
+    }
+    @Test void unavailableOrOversizedAttachmentsDoNotBlockNotification()throws Exception{
+        JavaMailSender sender=mock(JavaMailSender.class);
+        when(sender.createMimeMessage()).thenAnswer(call->new MimeMessage(Session.getInstance(new Properties())));
+        doAnswer(call->{((MimeMessage)call.getArgument(0)).saveChanges();return null;}).when(sender).send(any(MimeMessage.class));
+        RunRecord missing=run("FAILED");
         new SuccessNotifier(sender,"sender@example.test",true).afterRun(missing,input(List.of("one@example.test")));
-        assertThat(outcome(missing).get("status")).isEqualTo("ATTACHMENT_FAILED");assertThat(missing.status).isEqualTo("SUCCEEDED");verifyNoInteractions(sender);
-        RunRecord large=run("SUCCEEDED");EmailAttachmentFixtures.screenshot(large,"result-page");new SuccessNotifier(sender,"sender@example.test",true,1).afterRun(large,input(List.of("one@example.test")));
-        assertThat(outcome(large).get("status")).isEqualTo("ATTACHMENT_FAILED");verifyNoInteractions(sender);
+        assertThat(outcome(missing).get("status")).isEqualTo("ACCEPTED_BY_SMTP");
+        RunRecord large=run("FAILED");EmailAttachmentFixtures.screenshot(large,"failure");new SuccessNotifier(sender,"sender@example.test",true,1).afterRun(large,input(List.of("one@example.test")));
+        assertThat(outcome(large).get("status")).isEqualTo("ACCEPTED_BY_SMTP");
+        var captured=org.mockito.ArgumentCaptor.forClass(MimeMessage.class);verify(sender,times(2)).send(captured.capture());
+        List<BodyPart> parts=new ArrayList<>();collect(captured.getAllValues().get(1),parts);
+        assertThat(parts.get(0).getContent().toString()).contains("Attachment notes","size limit");
     }
     private static void collect(Part part,List<BodyPart> result)throws Exception{
         if(part.isMimeType("multipart/*")){Multipart multipart=(Multipart)part.getContent();for(int i=0;i<multipart.getCount();i++){BodyPart child=multipart.getBodyPart(i);if(child.isMimeType("multipart/*"))collect(child,result);else result.add(child);}}

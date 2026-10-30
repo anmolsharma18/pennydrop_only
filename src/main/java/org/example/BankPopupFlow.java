@@ -10,11 +10,18 @@ final class BankPopupFlow {
         if(run.workflowStage!=WorkflowStage.FILLING_BANK||!run.otpSubmitted||!JourneyPage.activeBank(driver))
             throw new IllegalStateException("Bank popup flow requires verified active bank details after OTP Submit");
         run.transition(WorkflowStage.SUBMITTING_BANK,"Clicking third-page SaveData once");
+        boolean[] obstructionObserved={false};
         WebElement bankButton=wait.until(d->{
             run.checkCancelled();
             if(!JourneyPage.activeBank(d))throw new IllegalStateException("Bank section changed before SaveData click");
             if(d.findElements(TargetLocators.LOADERS).stream().anyMatch(WebElement::isDisplayed))return null;
-            return JourneyPage.activeField(d,TargetLocators.BANK_SUBMIT);
+            WebElement button=JourneyPage.activeField(d,TargetLocators.BANK_SUBMIT);if(button==null)return null;
+            Map<String,Object> readiness=JourneyPage.clickReadiness(d,button);
+            boolean ready=Boolean.TRUE.equals(readiness.get("inViewport"))&&Boolean.TRUE.equals(readiness.get("unobstructed"));
+            if(!ready)obstructionObserved[0]=true;
+            Map<String,Object> diagnostic=new LinkedHashMap<>(readiness);diagnostic.put("xpath","//button[@id='SaveData']");diagnostic.put("obstructionObserved",obstructionObserved[0]);
+            run.diagnostic("bankSubmitClickReadiness",diagnostic);
+            return ready?button:null;
         });
         run.checkCancelled();run.stage("Bank SaveData click (once)");bankButton.click();
         run.transition(WorkflowStage.WAITING_FOR_BANK_POPUP,"Waiting for visible bankPopUp after third-page submission");

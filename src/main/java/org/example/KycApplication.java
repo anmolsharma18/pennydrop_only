@@ -9,5 +9,6 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 @EnableConfigurationProperties({PortalSettings.class,AdminCleanupProperties.class})
 @EnableScheduling
 public class KycApplication {
+    static { if(System.getProperty("java.net.preferIPv4Stack")==null)System.setProperty("java.net.preferIPv4Stack","true"); }
     public static void main(String[] args) { SpringApplication.run(KycApplication.class, args); }
 }

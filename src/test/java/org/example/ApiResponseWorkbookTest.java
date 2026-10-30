@@ -37,9 +37,9 @@ class ApiResponseWorkbookTest {
     @Test void emptyReportAndMissingOrOversizedScreenshotsAreExplicit()throws Exception{
         RunRecord run=new RunRecord();
         try(XSSFWorkbook book=new XSSFWorkbook(new ByteArrayInputStream(ApiResponseWorkbook.create(run)))){assertThat(book.getSheetAt(0).getRow(7).getCell(0).getStringCellValue()).contains("No Fetch/XHR requests");}
-        assertThatThrownBy(()->RunEmailAttachments.prepare(run,RunEmailAttachments.DEFAULT_LIMIT)).hasMessageContaining("screenshot");
-        EmailAttachmentFixtures.screenshot(run,"result-page");assertThat(RunEmailAttachments.prepare(run,RunEmailAttachments.DEFAULT_LIMIT)).hasSize(2);
-        assertThatThrownBy(()->RunEmailAttachments.prepare(run,1)).hasMessageContaining("size limit");
-        Files.delete(RunScreenshots.path(run.id,"result-page"));assertThatThrownBy(()->RunEmailAttachments.prepare(run,RunEmailAttachments.DEFAULT_LIMIT)).hasMessageContaining("unavailable");
+        assertThat(RunEmailAttachments.prepare(run,RunEmailAttachments.DEFAULT_LIMIT).notes()).anyMatch(note->note.contains("No screenshots"));
+        EmailAttachmentFixtures.screenshot(run,"result-page");assertThat(RunEmailAttachments.prepare(run,RunEmailAttachments.DEFAULT_LIMIT).attachments()).hasSize(2);
+        assertThat(RunEmailAttachments.prepare(run,1).notes()).anyMatch(note->note.contains("size limit"));
+        Files.delete(RunScreenshots.path(run.id,"result-page"));assertThat(RunEmailAttachments.prepare(run,RunEmailAttachments.DEFAULT_LIMIT).notes()).anyMatch(note->note.contains("unavailable"));
     }
 }

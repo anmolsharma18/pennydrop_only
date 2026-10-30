@@ -24,12 +24,20 @@ $portalLogs = Join-Path $PSScriptRoot 'inspection'
 New-Item -ItemType Directory -Path $portalLogs -Force | Out-Null
 $env:SE_CACHE_PATH = Join-Path $PSScriptRoot '.mvn/selenium-cache'
 $env:SE_AVOID_STATS = 'true'
+$preflightLog = Join-Path $portalLogs 'browser-preflight.log'
+$preflightErrorLog = Join-Path $portalLogs 'browser-preflight-error.log'
+$preflightProcess = Start-Process -FilePath $portalJava -WorkingDirectory $PSScriptRoot `
+    -ArgumentList @('-Djava.net.preferIPv4Stack=true', '-Dloader.main=org.example.ChromeConnectivityCheck', '-cp', ('"' + $portalJar + '"'), 'org.springframework.boot.loader.launch.PropertiesLauncher') `
+    -WindowStyle Hidden -RedirectStandardOutput $preflightLog -RedirectStandardError $preflightErrorLog -Wait -PassThru
+if ($preflightProcess.ExitCode -ne 0) {
+    throw 'Chrome/DevTools preflight failed. The portal was not started; check inspection/browser-preflight-error.log.'
+}
 $portalProcess = Start-Process -FilePath $portalJava -WorkingDirectory $PSScriptRoot `
-    -ArgumentList @('-jar', ('"' + $portalJar + '"')) -WindowStyle Hidden `
+    -ArgumentList @('-Djava.net.preferIPv4Stack=true', '-jar', ('"' + $portalJar + '"')) -WindowStyle Hidden `
     -RedirectStandardOutput (Join-Path $portalLogs 'portal.log') `
     -RedirectStandardError (Join-Path $portalLogs 'portal-error.log') -PassThru
 Set-Content -LiteralPath (Join-Path $portalLogs 'portal.pid') -Value $portalProcess.Id
-$portalDeadline = (Get-Date).AddSeconds(45)
+$portalDeadline = (Get-Date).AddSeconds(90)
 do {
     if ($portalProcess.HasExited) {
         throw 'Portal exited during startup. Check inspection/portal.log and portal-error.log.'
@@ -43,4 +51,4 @@ do {
     } catch { }
     Start-Sleep -Seconds 1
 } while ((Get-Date) -lt $portalDeadline)
-throw 'Portal did not become ready within 45 seconds. Check inspection/portal.log and portal-error.log.'
+throw 'Portal did not become ready within 90 seconds. Check inspection/portal.log and portal-error.log.'

@@ -23,10 +23,9 @@ public class AdminDeleteJourney {
             ChromeOptions options=ChromeSessionOptions.create(settings,input.browserMode());
             run.diagnostic("passwordSavePrompt","Disabled in this fresh automation Chrome profile");
             if(admin.url().startsWith("http://127.0.0.1:")&&System.getProperty("localChromeBinary")!=null)options.setBinary(System.getProperty("localChromeBinary"));
-            driver=new ChromeDriver(options);run.checkCancelled();
+            ChromeSession.Started started=ChromeSession.open(options,run);driver=started.driver();monitor=started.network();run.checkCancelled();
             driver.manage().timeouts().pageLoadTimeout(Duration.ofSeconds(60));driver.manage().timeouts().scriptTimeout(Duration.ofSeconds(10));
             if(!driver.getCapabilities().getBrowserVersion().startsWith(settings.chromeVersion()+"."))throw new IllegalStateException("Chrome/CDP major version mismatch");
-            monitor=new BrowserNetwork(driver,run.network);
             WebDriverWait wait=new WebDriverWait(driver,Duration.ofSeconds(settings.waitSeconds()));wait.ignoring(StaleElementReferenceException.class);
             AdminCleanupFlow.deleteOnly(driver,wait,run,input,monitor,credentials,admin.url());
             run.transition(WorkflowStage.COMPLETED,"Standalone deletion confirmed; success popup captured");run.status="SETTLING";

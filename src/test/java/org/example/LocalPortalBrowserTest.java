@@ -42,12 +42,13 @@ class LocalPortalBrowserTest {
             }
             ((JavascriptExecutor)driver).executeScript("document.querySelector('[name=scheduledLocalTime]').value='2099-10-15T10:30';");
             driver.findElement(By.name("notificationEmails")).sendKeys("one@example.test; two@example.test");
-            driver.findElement(By.id("saveDetails")).click();
-            wait.until(ExpectedConditions.textToBePresentInElementLocated(By.id("savedDetailsMessage"),"saved on this computer"));
+            wait.until(ExpectedConditions.textToBePresentInElementLocated(By.id("savedDetailsMessage"),"saved automatically"));
             driver.navigate().refresh();wait.until(ExpectedConditions.elementToBeClickable(By.id("runButton")));
             assertThat(driver.findElement(By.name("accountNumber")).getDomProperty("value")).isEqualTo("0000123");
             assertThat(driver.findElement(By.name("fixedOtp")).getDomProperty("value")).isEqualTo("0007");
             assertThat(driver.findElement(By.name("notificationEmails")).getDomProperty("value")).isEqualTo("one@example.test; two@example.test");
+            driver.findElement(By.id("saveDetails")).click();
+            wait.until(ExpectedConditions.textToBePresentInElementLocated(By.id("savedDetailsMessage"),"saved on this computer"));
             driver.findElement(By.id("scheduleButton")).click();
             wait.until(ExpectedConditions.numberOfElementsToBe(By.cssSelector("#scheduleBody tr"),1));
             assertThat(driver.findElement(By.id("scheduleBody")).getText()).contains("2099-10-15 10:30 IST","PENDING","QA Fixture");verifyNoInteractions(journey);

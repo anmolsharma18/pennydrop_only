@@ -10,6 +10,19 @@ import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 class RunNotificationTest {
+    @Test void unexpectedJourneyFailureStillNotifiesAndReleasesWorker()throws Exception{
+        KycJourney journey=mock(KycJourney.class);AdminDeleteJourney deletion=mock(AdminDeleteJourney.class);
+        doThrow(new IllegalStateException("private exception detail")).when(journey).execute(any(),any());
+        JavaMailSender sender=mock(JavaMailSender.class);when(sender.createMimeMessage()).thenAnswer(call->new MimeMessage(jakarta.mail.Session.getInstance(new Properties())));
+        RunService service=new RunService(journey,deletion,new SuccessNotifier(sender,"sender@example.test",true));
+        RunInput input=new RunInput("6999999999","Fixture","QA Fixture","TEST0000000","0000123","0000123","Fixture",RunInput.OtpMode.FIXED,"0007",RunInput.BrowserMode.HEADLESS,List.of("saved@example.test"));
+        try{
+            RunRecord run=service.start(input);long deadline=System.nanoTime()+TimeUnit.SECONDS.toNanos(5);while(run.notificationPending&&System.nanoTime()<deadline)Thread.sleep(10);
+            assertThat(run.notificationPending).isFalse();assertThat(run.status).isEqualTo("FAILED");assertThat(run.finishedAt).isNotNull();
+            verify(sender).send(argThat((MimeMessage message)->{try{return message.getSubject().contains("failed");}catch(Exception e){return false;}}));
+            assertThat(run.view().toString()).doesNotContain("private exception detail");
+        }finally{service.stop();}
+    }
     @Test void scheduledWorkerKeepsBusyUntilItsOwnRecipientSnapshotIsProcessed()throws Exception{
         KycJourney journey=mock(KycJourney.class);AdminDeleteJourney deletion=mock(AdminDeleteJourney.class);
         doAnswer(call->{RunRecord run=call.getArgument(1);EmailAttachmentFixtures.screenshot(run,"result-page");run.status="SUCCEEDED";run.workflowStage=WorkflowStage.COMPLETED;run.finishedAt="2026-10-16T00:00:00Z";return null;}).when(journey).execute(any(),any());

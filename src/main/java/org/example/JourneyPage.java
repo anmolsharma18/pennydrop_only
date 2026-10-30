@@ -50,6 +50,23 @@ final class JourneyPage {
             return parent(arguments[0])===parent(arguments[1]);
             """,field,button));
     }
+    @SuppressWarnings("unchecked")
+    static Map<String,Object> clickReadiness(WebDriver d,WebElement element) {
+        // Scroll only; the hit test is read-only and never invokes the element's click handler.
+        return (Map<String,Object>)((JavascriptExecutor)d).executeScript("""
+            const e=arguments[0];
+            e.scrollIntoView({block:'center',inline:'center',behavior:'auto'});
+            const r=e.getBoundingClientRect();
+            const x=Math.max(0,Math.min(window.innerWidth-1,r.left+r.width/2));
+            const y=Math.max(0,Math.min(window.innerHeight-1,r.top+r.height/2));
+            const top=document.elementFromPoint(x,y);
+            const inViewport=r.width>0&&r.height>0&&r.top>=0&&r.left>=0&&r.bottom<=window.innerHeight&&r.right<=window.innerWidth;
+            const unobstructed=!!top&&(top===e||e.contains(top));
+            const safe=v=>(v||'').toString().slice(0,120);
+            return {inViewport,unobstructed,x:Math.round(x),y:Math.round(y),
+                blockerTag:top?safe(top.tagName).toLowerCase():'',blockerId:top?safe(top.id):'',blockerClass:top?safe(top.className):''};
+            """,element);
+    }
     static boolean visible(WebDriver d,By locator) {return d.findElements(locator).stream().anyMatch(WebElement::isDisplayed);}
     static String errors(WebDriver d) {
         return d.findElements(TargetLocators.ERRORS).stream().filter(WebElement::isDisplayed).map(WebElement::getText)

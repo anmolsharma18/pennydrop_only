@@ -30,10 +30,9 @@ public class KycJourney {
             ChromeOptions options=ChromeSessionOptions.create(settings,input.browserMode());
             if(!TARGET.equals(target)&&System.getProperty("localChromeBinary")!=null)options.setBinary(System.getProperty("localChromeBinary"));
             run.diagnostic("passwordSavePrompt","Disabled in this fresh automation Chrome profile");
-            driver=new ChromeDriver(options);run.checkCancelled();
+            ChromeSession.Started started=ChromeSession.open(options,run);driver=started.driver();monitor=started.network();run.checkCancelled();
             driver.manage().timeouts().pageLoadTimeout(Duration.ofSeconds(60));driver.manage().timeouts().scriptTimeout(Duration.ofSeconds(10));
             if(!driver.getCapabilities().getBrowserVersion().startsWith(settings.chromeVersion()+"."))throw new IllegalStateException("Chrome/CDP major version mismatch");
-            monitor=new BrowserNetwork(driver,run.network);
             run.stage("Opening target journey");driver.get(target);run.checkCancelled();
             WebDriverWait wait=new WebDriverWait(driver,Duration.ofSeconds(settings.waitSeconds()));wait.ignoring(StaleElementReferenceException.class);
             wait.until(d->{run.checkCancelled();return JourneyPage.findActive(d,TargetLocators.MOBILE,false);});
