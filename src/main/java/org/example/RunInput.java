@@ -13,16 +13,25 @@ public record RunInput(
         @NotNull OtpMode otpMode,
         String fixedOtp,
         @NotNull BrowserMode browserMode,
-        java.util.List<String> notificationEmails) {
-    public RunInput { notificationEmails=notificationEmails==null?java.util.List.of():java.util.List.copyOf(notificationEmails); }
+        java.util.List<String> notificationEmails,
+        @NotNull PennyDropType pennyDropType) {
+    public RunInput {
+        notificationEmails=notificationEmails==null?java.util.List.of():java.util.List.copyOf(notificationEmails);
+        // Existing saved schedules and API clients predate tenant selection and remain Meon.
+        pennyDropType=pennyDropType==null?PennyDropType.MEON:pennyDropType;
+    }
     public RunInput(String mobile,String dependency,String name,String ifsc,String accountNumber,String confirmAccountNumber,String accountType,OtpMode otpMode,String fixedOtp,BrowserMode browserMode) {
-        this(mobile,dependency,name,ifsc,accountNumber,confirmAccountNumber,accountType,otpMode,fixedOtp,browserMode,java.util.List.of());
+        this(mobile,dependency,name,ifsc,accountNumber,confirmAccountNumber,accountType,otpMode,fixedOtp,browserMode,java.util.List.of(),PennyDropType.MEON);
+    }
+    public RunInput(String mobile,String dependency,String name,String ifsc,String accountNumber,String confirmAccountNumber,String accountType,OtpMode otpMode,String fixedOtp,BrowserMode browserMode,java.util.List<String> notificationEmails) {
+        this(mobile,dependency,name,ifsc,accountNumber,confirmAccountNumber,accountType,otpMode,fixedOtp,browserMode,notificationEmails,PennyDropType.MEON);
     }
     @AssertTrue(message="Enter at most 20 valid notification email addresses")
     @com.fasterxml.jackson.annotation.JsonIgnore
     public boolean isNotificationEmailsValid(){return EmailRecipients.valid(notificationEmails);}
     public enum OtpMode { RANDOM, FIXED }
     public enum BrowserMode { HEADLESS, VISIBLE }
+    public enum PennyDropType { MEON, RAZORPAY }
     @AssertTrue(message="Account number and confirmation must match")
     @com.fasterxml.jackson.annotation.JsonIgnore
     public boolean isAccountConfirmationValid() { return accountNumber != null && accountNumber.equals(confirmAccountNumber); }

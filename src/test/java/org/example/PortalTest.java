@@ -19,7 +19,7 @@ class PortalTest {
     @MockitoBean AdminDeleteJourney deletion;
     private String token() throws Exception { return json.readTree(mvc.perform(get("/api/config")).andReturn().getResponse().getContentAsString()).get("runToken").asText(); }
     private final String valid="""
-        {"mobile":"6999999999","dependency":"Fixture","name":"QA Fixture","ifsc":"TEST0000000",
+        {"pennyDropType":"MEON","mobile":"6999999999","dependency":"Fixture","name":"QA Fixture","ifsc":"TEST0000000",
         "accountNumber":"0000123","confirmAccountNumber":"0000123","accountType":"Fixture",
         "otpMode":"FIXED","fixedOtp":"0007","browserMode":"HEADLESS"}
         """;
@@ -56,7 +56,15 @@ class PortalTest {
     }
     @Test void explicitRunPreservesStringValues() throws Exception {
         mvc.perform(post("/api/runs").header("X-Portal-Token",token()).contentType("application/json").content(valid)).andExpect(status().isAccepted());
-        verify(journey,timeout(1000)).execute(argThat(i->i.accountNumber().equals("0000123") && i.fixedOtp().equals("0007")),any());
+        verify(journey,timeout(1000)).execute(argThat(i->i.accountNumber().equals("0000123") && i.fixedOtp().equals("0007")&&i.pennyDropType()==RunInput.PennyDropType.MEON),any());
+    }
+    @Test void razorpaySelectionReachesJourneyAndDeleteRunner()throws Exception{
+        String t=token();String razorpay=valid.replace("\"MEON\"","\"RAZORPAY\"");
+        mvc.perform(post("/api/runs").header("X-Portal-Token",t).contentType("application/json").content(razorpay)).andExpect(status().isAccepted());
+        verify(journey,timeout(1000)).execute(argThat(i->i.pennyDropType()==RunInput.PennyDropType.RAZORPAY),any());
+        String deleteBody="{\"pennyDropType\":\"RAZORPAY\",\"mobile\":\"6999999999\",\"name\":\"QA Fixture\",\"ifsc\":\"TEST0000000\",\"accountNumber\":\"0000123\",\"browserMode\":\"HEADLESS\"}";
+        mvc.perform(post("/api/runs/delete-only").header("X-Portal-Token",t).contentType("application/json").content(deleteBody)).andExpect(status().isAccepted());
+        verify(deletion,timeout(1000)).execute(argThat(i->i.pennyDropType()==RunInput.PennyDropType.RAZORPAY),any());
     }
     @Test void scheduleSavesExistingInputsWithoutLaunchingAndRequiresAuthorization() throws Exception {
         String t=token();String body="{\"input\":"+valid+",\"scheduledLocalTime\":\"2099-10-15T10:30\"}";

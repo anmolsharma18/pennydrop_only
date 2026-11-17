@@ -18,6 +18,12 @@ final class AdminCredentials {
         if(user!=null&&!user.isBlank()&&pass!=null&&!pass.isBlank())return new AdminCredentials(user,pass);
         return readLocal(directory);
     }
+    static AdminCredentials load(Path directory,RunInput.PennyDropType type) {
+        if(type==RunInput.PennyDropType.MEON)return load(directory);
+        String user=System.getenv("KYC_RAZORPAY_ADMIN_USERNAME"),pass=System.getenv("KYC_RAZORPAY_ADMIN_PASSWORD");
+        if(user!=null&&!user.isBlank()&&pass!=null&&!pass.isBlank())return new AdminCredentials(user,pass);
+        return readLocal(directory);
+    }
     static AdminCredentials readLocal(Path directory) {
         try {
             byte[] key=Files.readAllBytes(directory.resolve("credentials.key")),bytes=Files.readAllBytes(directory.resolve("credentials.enc"));
@@ -34,5 +40,11 @@ final class AdminCredentials {
         byte[] encrypted=cipher.doFinal(output.toByteArray()),bytes=new byte[nonce.length+encrypted.length];System.arraycopy(nonce,0,bytes,0,nonce.length);System.arraycopy(encrypted,0,bytes,nonce.length,encrypted.length);
         Path temp=Files.createTempFile(directory,"credentials-",".tmp");try{Files.write(temp,bytes);try{Files.move(temp,directory.resolve("credentials.enc"),StandardCopyOption.ATOMIC_MOVE,StandardCopyOption.REPLACE_EXISTING);}catch(AtomicMoveNotSupportedException e){Files.move(temp,directory.resolve("credentials.enc"),StandardCopyOption.REPLACE_EXISTING);}}finally{Files.deleteIfExists(temp);}
     }
-    public static void main(String[] args)throws Exception {save(Path.of(args.length==0?"data/admin":args[0]),System.getenv("KYC_ADMIN_USERNAME"),System.getenv("KYC_ADMIN_PASSWORD"));System.out.println("Admin credentials saved locally (encrypted); values omitted");}
+    public static void main(String[] args)throws Exception {
+        boolean razorpay=args.length>0&&"--razorpay".equalsIgnoreCase(args[0]);
+        Path directory=Path.of(razorpay?(args.length>1?args[1]:"data/admin/razorpay"):(args.length>0?args[0]:"data/admin"));
+        String prefix=razorpay?"KYC_RAZORPAY_ADMIN_":"KYC_ADMIN_";
+        save(directory,System.getenv(prefix+"USERNAME"),System.getenv(prefix+"PASSWORD"));
+        System.out.println((razorpay?"Razorpay":"Meon")+" admin credentials saved locally (encrypted); values omitted");
+    }
 }

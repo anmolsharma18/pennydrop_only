@@ -24,6 +24,7 @@ public class PortalController {
     @DeleteMapping("/saved-details") public Map<String,String> clearDetails(@RequestHeader(value="X-Portal-Token",required=false) String supplied,@RequestHeader(value="Origin",required=false) String origin){authorize(supplied,origin);return details.clear();}
     @GetMapping("/config") public Map<String,Object> config() {
         return Map.of("defaults",settings.defaults(),"runToken",token,"target",KycJourney.TARGET,
+                "targets",Map.of("MEON",KycJourney.TARGET,"RAZORPAY",KycJourney.RAZORPAY_TARGET),
                 "chromeVersion",settings.chromeVersion(),"adminCleanupEnabled",admin.enabled(),"locatorWarning","Post-OTP locators need live DOM verification. No live journey or admin deletion was submitted during development.");
     }
     @GetMapping("/runs") public List<Map<String,Object>> list() { return runs.list(); }

@@ -19,15 +19,17 @@ public class AdminDeleteJourney {
         try {
             if(run.kind!=RunRecord.Kind.DELETE_ONLY)throw new IllegalStateException("Deletion runner requires DELETE_ONLY run");
             run.status="RUNNING";run.stage("Starting fresh Chrome for standalone admin deletion");run.checkCancelled();
-            AdminCredentials credentials=AdminCredentials.load(Path.of(admin.credentialsDirectory()));
+            RunInput.PennyDropType type=input.pennyDropType();
+            run.diagnostic("pennyDropType",type.name());
+            AdminCredentials credentials=AdminCredentials.load(Path.of(admin.credentialsDirectory(type)),type);
             ChromeOptions options=ChromeSessionOptions.create(settings,input.browserMode());
             run.diagnostic("passwordSavePrompt","Disabled in this fresh automation Chrome profile");
-            if(admin.url().startsWith("http://127.0.0.1:")&&System.getProperty("localChromeBinary")!=null)options.setBinary(System.getProperty("localChromeBinary"));
+            if(admin.url(type).startsWith("http://127.0.0.1:")&&System.getProperty("localChromeBinary")!=null)options.setBinary(System.getProperty("localChromeBinary"));
             ChromeSession.Started started=ChromeSession.open(options,run);driver=started.driver();monitor=started.network();run.checkCancelled();
             driver.manage().timeouts().pageLoadTimeout(Duration.ofSeconds(60));driver.manage().timeouts().scriptTimeout(Duration.ofSeconds(10));
             if(!driver.getCapabilities().getBrowserVersion().startsWith(settings.chromeVersion()+"."))throw new IllegalStateException("Chrome/CDP major version mismatch");
             WebDriverWait wait=new WebDriverWait(driver,Duration.ofSeconds(settings.waitSeconds()));wait.ignoring(StaleElementReferenceException.class);
-            AdminCleanupFlow.deleteOnly(driver,wait,run,input,monitor,credentials,admin.url());
+            AdminCleanupFlow.deleteOnly(driver,wait,run,input,monitor,credentials,admin.url(type));
             run.transition(WorkflowStage.COMPLETED,"Standalone deletion confirmed; success popup captured");run.status="SETTLING";
         }catch(Exception e){
             if(driver!=null){run.diagnostic("failurePage",JourneyPage.describe(driver,run));try{RunScreenshots.capture(driver,run,"failure");}catch(Exception ignored){run.diagnostic("screenshotNote","Failure screenshot unavailable");}}

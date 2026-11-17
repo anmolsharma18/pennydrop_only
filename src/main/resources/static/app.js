@@ -10,7 +10,7 @@ const runButtons=disabled=>{for(const id of ['#runButton','#deleteOnlyButton'])$
 const setText=(selector,text)=>{$(selector).textContent=text??'';};
 function otpVisibility(){const fixed=form.elements.otpMode.value==='FIXED'; $('#fixedOtpLabel').hidden=!fixed; form.elements.fixedOtp.required=fixed; form.elements.fixedOtp.disabled=!fixed;}
 function defaults(){for(const [key,value] of Object.entries(config.defaults))if(form.elements[key])form.elements[key].value=value??''; otpVisibility();}
-const savedFields=['mobile','dependency','name','ifsc','accountNumber','confirmAccountNumber','accountType','otpMode','fixedOtp','browserMode','scheduledLocalTime','notificationEmails'];
+const savedFields=['pennyDropType','mobile','dependency','name','ifsc','accountNumber','confirmAccountNumber','accountType','otpMode','fixedOtp','browserMode','scheduledLocalTime','notificationEmails'];
 function notificationRecipients(){
  const emails=form.elements.notificationEmails.value.split(/[,;\r\n]+/).map(s=>s.trim()).filter(Boolean);
  if(emails.length>20||emails.some(e=>e.length>254||!/^([^\s,;<>@]+)@([^\s,;<>@]+)$/.test(e))){setText('#formError','Enter up to 20 valid notification email addresses.');return null;}
@@ -60,7 +60,7 @@ form.elements.ifsc.addEventListener('input',()=>{form.elements.ifsc.value=form.e
 $('#resetDefaults').addEventListener('click',defaults);
 function journeyInput(){setText('#formError','');
  const a=form.elements.accountNumber,b=form.elements.confirmAccountNumber;b.setCustomValidity(a.value===b.value?'':'Account numbers must match');
- if(!['RANDOM','FIXED'].includes(form.elements.otpMode.value)||!['VISIBLE','HEADLESS'].includes(form.elements.browserMode.value)){setText('#formError','Invalid OTP or browser mode');return;}
+ if(!['RANDOM','FIXED'].includes(form.elements.otpMode.value)||!['VISIBLE','HEADLESS'].includes(form.elements.browserMode.value)||!['MEON','RAZORPAY'].includes(form.elements.pennyDropType.value)){setText('#formError','Invalid pennydrop, OTP or browser mode');return;}
  if(!form.reportValidity())return;const input=Object.fromEntries(new FormData(form));delete input.scheduledLocalTime;const emails=notificationRecipients();if(emails===null)return;input.notificationEmails=emails;if(input.otpMode==='RANDOM')input.fixedOtp=null;
  if(['mobile','dependency','name','ifsc','accountNumber','confirmAccountNumber','accountType'].some(key=>!input[key]?.trim())){setText('#formError','All required fields must contain a non-blank value.');return;}
  return input;
@@ -72,8 +72,8 @@ async function launch(path,input){
 form.addEventListener('submit',async event=>{event.preventDefault();if(launching)return;const input=journeyInput();if(input)await launch('/api/runs',input);});
 $('#deleteOnlyButton').addEventListener('click',async()=>{
  if(launching)return;setText('#formError','');const input={};
- for(const key of ['mobile','name','ifsc','accountNumber','browserMode']){const field=form.elements[key];if(!field.value.trim()){setText('#formError',`Deletion requires ${key}.`);field.focus();return;}if(!field.reportValidity())return;input[key]=field.value;}
- if(!['VISIBLE','HEADLESS'].includes(input.browserMode)){setText('#formError','Invalid browser mode');return;}
+ for(const key of ['pennyDropType','mobile','name','ifsc','accountNumber','browserMode']){const field=form.elements[key];if(!field.value.trim()){setText('#formError',`Deletion requires ${key}.`);field.focus();return;}if(!field.reportValidity())return;input[key]=field.value;}
+ if(!['VISIBLE','HEADLESS'].includes(input.browserMode)||!['MEON','RAZORPAY'].includes(input.pennyDropType)){setText('#formError','Invalid pennydrop or browser mode');return;}
  const emails=notificationRecipients();if(emails===null)return;input.notificationEmails=emails;
  await launch('/api/runs/delete-only',input);
 });

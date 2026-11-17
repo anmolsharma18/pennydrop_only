@@ -5,6 +5,7 @@
 <p id="cleanupNotice" class="notice"></p><p id="locatorWarning" class="muted"></p>
 <section class="layout"><article><h2>Run inputs</h2><p class="muted">Use authorized test details. Format checks do not prove applicant or bank validity.</p>
 <form id="runForm"><div class="fields">
+<label>Pennydrop type<select name="pennyDropType"><option value="MEON">Meon</option><option value="RAZORPAY">Razorpay</option></select></label>
 <label>Mobile number<input name="mobile" type="text" inputmode="numeric" pattern="[6-9][0-9]{9}" maxlength="10" required autocomplete="off"></label>
 <label>Dependency — exact option label<input name="dependency" type="text" maxlength="100" required></label>
 <label class="wide">Name<input name="name" type="text" maxlength="150" required autocomplete="off"></label>

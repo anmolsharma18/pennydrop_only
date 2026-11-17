@@ -18,6 +18,7 @@ final class SavedSchedule {
         result.put("runId",runId);result.put("startedAt",startedAt);result.put("finishedAt",finishedAt);result.put("message",message);
         result.put("name",input.name());result.put("mobileMasked",mask(input.mobile()));result.put("accountMasked",mask(input.accountNumber()));
         result.put("browserMode",input.browserMode());result.put("otpMode",input.otpMode());
+        result.put("pennyDropType",input.pennyDropType());
         return result;
     }
     private static String mask(String text){return text.length()<=4?"****":"*".repeat(text.length()-4)+text.substring(text.length()-4);}

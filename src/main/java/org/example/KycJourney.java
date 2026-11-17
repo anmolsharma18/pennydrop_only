@@ -13,20 +13,22 @@ import org.springframework.stereotype.Component;
 @Component
 public class KycJourney {
     public static final String TARGET="https://live.meon.co.in/democapital/pennydrop_only";
+    public static final String RAZORPAY_TARGET="https://live.meon.co.in/shashankg/pennydrop_only";
     private final PortalSettings settings;
     private final AdminCleanupProperties admin;
     private final SecureRandom random=new SecureRandom();
-    public KycJourney(PortalSettings settings) { this(settings,new AdminCleanupProperties(false,"","")); }
+    public KycJourney(PortalSettings settings) { this(settings,new AdminCleanupProperties(false,"","","","")); }
     @org.springframework.beans.factory.annotation.Autowired
     public KycJourney(PortalSettings settings,AdminCleanupProperties admin) { this.settings=settings;this.admin=admin; }
     public String randomOtp() { return String.format(Locale.ROOT,"%04d",random.nextInt(10000)); }
-    public void execute(RunInput input,RunRecord run) { executeAt(input,run,TARGET); }
+    public void execute(RunInput input,RunRecord run) { executeAt(input,run,target(input.pennyDropType())); }
     void executeAt(RunInput input,RunRecord run,String target) {
         ChromeDriver driver=null;BrowserNetwork monitor=null;
         Set<String> inspectedRequests=new HashSet<>();List<Map<String,Object>> outcomes=new ArrayList<>();
         JourneyRecordIdentity identity=new JourneyRecordIdentity();
         try {
             run.status="RUNNING";run.transition(WorkflowStage.APPLICANT_DETAILS,"Starting fresh Chrome session");
+            run.diagnostic("pennyDropType",input.pennyDropType().name());
             ChromeOptions options=ChromeSessionOptions.create(settings,input.browserMode());
             if(!TARGET.equals(target)&&System.getProperty("localChromeBinary")!=null)options.setBinary(System.getProperty("localChromeBinary"));
             run.diagnostic("passwordSavePrompt","Disabled in this fresh automation Chrome profile");
@@ -93,7 +95,9 @@ public class KycJourney {
             run.diagnostic("pennyDropCaptured",true);
             if(admin.enabled()) {
                 identity.capture(driver,monitor,run);
-                AdminCleanupFlow.complete(driver,wait,run,input,identity.unique(),monitor,AdminCredentials.load(Path.of(admin.credentialsDirectory())),admin.url());
+                RunInput.PennyDropType type=input.pennyDropType();
+                AdminCleanupFlow.complete(driver,wait,run,input,identity.unique(),monitor,
+                        AdminCredentials.load(Path.of(admin.credentialsDirectory(type)),type),admin.url(type));
             }
             run.transition(WorkflowStage.COMPLETED,admin.enabled()?"Penny-drop result and admin deletion success popup captured":"Bank popup captured, Proceed clicked once and resulting page captured");
             run.diagnostic("completedPage",JourneyPage.describeCurrent(driver,run));
@@ -117,6 +121,7 @@ public class KycJourney {
             run.finishedAt=java.time.Instant.now().toString();run.status=run.isCancellationRequested()?"CANCELLED":run.error==null?"SUCCEEDED":"FAILED";
         }
     }
+    static String target(RunInput.PennyDropType type){return type==RunInput.PennyDropType.RAZORPAY?RAZORPAY_TARGET:TARGET;}
     private static void requireStage(RunRecord run,WorkflowStage expected){if(run.workflowStage!=expected)throw new IllegalStateException("Expected "+expected+", observed "+run.workflowStage);}
     private static void failOnErrors(WebDriver d){String errors=JourneyPage.errors(d);if(!errors.isBlank())throw new IllegalStateException("Target validation: "+errors);}
     private static void clickOnce(WebDriver d,WebDriverWait wait,By locator,RunRecord run){

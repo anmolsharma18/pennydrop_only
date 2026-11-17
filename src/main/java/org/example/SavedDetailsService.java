@@ -14,7 +14,7 @@ import org.springframework.web.server.ResponseStatusException;
 /** Separate encrypted profile: never expires or changes as a side effect of completing a run. */
 @Service
 public class SavedDetailsService {
-    static final Set<String> FIELDS=Set.of("mobile","dependency","name","ifsc","accountNumber","confirmAccountNumber","accountType","otpMode","fixedOtp","browserMode","scheduledLocalTime","notificationEmails");
+    static final Set<String> FIELDS=Set.of("mobile","dependency","name","ifsc","accountNumber","confirmAccountNumber","accountType","otpMode","fixedOtp","browserMode","pennyDropType","scheduledLocalTime","notificationEmails");
     private final Path directory,file,keyFile;
     private final ObjectMapper mapper;
     public SavedDetailsService(@Value("${portal.profile-directory:data/profile}") String directory,ObjectMapper mapper){
@@ -33,6 +33,7 @@ public class SavedDetailsService {
         try{EmailRecipients.parse(values.get("notificationEmails"));}catch(IllegalArgumentException e){throw bad(e.getMessage());}
         if(values.containsKey("otpMode")&&!Set.of("RANDOM","FIXED").contains(values.get("otpMode")))throw bad("Invalid OTP mode");
         if(values.containsKey("browserMode")&&!Set.of("HEADLESS","VISIBLE").contains(values.get("browserMode")))throw bad("Invalid browser mode");
+        if(values.containsKey("pennyDropType")&&!Set.of("MEON","RAZORPAY").contains(values.get("pennyDropType")))throw bad("Invalid pennydrop type");
         try{
             Files.createDirectories(directory);
             if(!Files.exists(keyFile)){byte[] key=new byte[32];new SecureRandom().nextBytes(key);Files.write(keyFile,key,StandardOpenOption.CREATE_NEW);}
@@ -46,7 +47,7 @@ public class SavedDetailsService {
         }catch(Exception e){throw new IllegalStateException("Cannot save details; previous saved details were not intentionally cleared",e);}
     }
     public synchronized Map<String,String> clear(){
-        var empty=new LinkedHashMap<String,String>();FIELDS.forEach(key->empty.put(key,""));empty.put("otpMode","RANDOM");empty.put("browserMode","VISIBLE");return save(empty);
+        var empty=new LinkedHashMap<String,String>();FIELDS.forEach(key->empty.put(key,""));empty.put("otpMode","RANDOM");empty.put("browserMode","VISIBLE");empty.put("pennyDropType","MEON");return save(empty);
     }
     private static ResponseStatusException bad(String message){return new ResponseStatusException(HttpStatus.BAD_REQUEST,message);}
 }

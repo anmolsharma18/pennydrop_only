@@ -21,10 +21,12 @@ Windows workspace: run `powershell -ExecutionPolicy Bypass -File .\start-portal.
    To reuse this workspace's already downloaded browser cache, set `$env:SE_CACHE_PATH = Join-Path $PWD '.mvn/selenium-cache'` before the `java -jar` command. Selenium Manager also supports its normal user cache when this is unset.
 
    Stop an already running instance before rebuilding the same JAR on Windows (`Ctrl+C` in its terminal or Stop in IntelliJ), since Windows locks the running archive.
-3. Open **http://127.0.0.1:8080**. Enter your authorized QA values, exact dependency/account-type labels, OTP mode and browser mode. Click **Run journey** once. No applicant or bank details are prefilled by default.
+3. Open **http://127.0.0.1:8080**. Select **Meon** or **Razorpay**, then enter your authorized QA values, exact dependency/account-type labels, OTP mode and browser mode. Click **Run journey** once. No applicant or bank details are prefilled by default.
 4. Watch progress and per-request status codes. Download the JSON report when needed. A visible browser closes when the run ends; the report remains in the portal.
 
 All routine values are editable in the portal for each run. Defaults are optional: configure `portal.defaults.*` properties or the `KYC_DEFAULT_MOBILE`, `KYC_DEFAULT_DEPENDENCY`, `KYC_DEFAULT_NAME`, `KYC_DEFAULT_IFSC`, `KYC_DEFAULT_ACCOUNT_NUMBER`, `KYC_DEFAULT_CONFIRM_ACCOUNT_NUMBER`, and `KYC_DEFAULT_ACCOUNT_TYPE` environment variables before startup. Settings supply initial defaults only; each run consumes the submitted form. OTP and browser defaults can also be set with Spring's `PORTAL_DEFAULTS_OTP_MODE` and `PORTAL_DEFAULTS_BROWSER_MODE` environment variables. Use strings throughout, including leading zeroes.
+
+Pennydrop type defaults to **Meon** for backward compatibility. Meon retains the existing `democapital` journey, admin URL, credential directory and cleanup behavior. Razorpay routes the same workflow through the `shashankg` journey and admin tenant, and loads credentials only from `KYC_RAZORPAY_ADMIN_USERNAME` / `KYC_RAZORPAY_ADMIN_PASSWORD` or the separate encrypted `data/admin/razorpay` store. The selection is retained in saved details and captured in each scheduled-run snapshot. Delete entry only uses the selected type as well.
 
 Dependency labels observed in the initial live DOM were `Self`, `Spouse`, `Child Dependent`, `Parent Dependent 2`, and `childdependent3`. Account-type options were not observed before OTP submission, so no account-type label is invented or prefilled.
 
@@ -132,6 +134,16 @@ java -cp .\target\classes org.example.AdminCredentials data/admin
 ```
 
 Do not put credentials in tracked properties/source. Environment variables take precedence over the local store. Optional startup properties are `portal.admin-cleanup.enabled` (default true), `portal.admin-cleanup.url`, and `portal.admin-cleanup.credentials-directory` (default `data/admin`). Disable cleanup before startup with `PORTAL_ADMIN_CLEANUP_ENABLED=false` if a capture-only run is explicitly wanted.
+
+Razorpay uses `portal.admin-cleanup.razorpay-url` (default `https://live.meon.co.in/admin/shashankg`) and `portal.admin-cleanup.razorpay-credentials-directory` (default `data/admin/razorpay`). To replace its local encrypted credentials without placing them in source:
+
+```powershell
+$env:KYC_RAZORPAY_ADMIN_USERNAME = '<authorized Razorpay tenant login>'
+$env:KYC_RAZORPAY_ADMIN_PASSWORD = '<password>'
+java -cp .\target\classes org.example.AdminCredentials --razorpay
+```
+
+Clear those process environment variables after saving if you want startup to use the encrypted local copy. Meon continues to use the original properties, environment variables and `data/admin` files unchanged.
 
 `AdminTargetInspector` is a manual read-only utility that signs in and reads filter/modal structures and actual table-response **field names only**. It never clicks a row or Delete. Evidence is in `inspection/admin-dom.md`; public admin JS is saved under `inspection/admin-*.js`. The live Verify table was empty during inspection, so row action bindings and success behavior were verified from the public script and local fixtures, not by deleting a live record. `AdminEntryMatcherTest` and `LocalAdminCleanupTest` verify matching, ambiguity/incomplete-page rejection, wrong-dialog protection, actual timing, one deletion click, success/failure handling, encryption and cancellation. Real browser tests use only localhost with fake credentials/records.
 

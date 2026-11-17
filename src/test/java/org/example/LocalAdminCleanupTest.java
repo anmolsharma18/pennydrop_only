@@ -61,7 +61,8 @@ class LocalAdminCleanupTest {
             try {
                 AdminCredentials.save(credentialsDirectory,"fixture-login","fixture-password");
                 PortalSettings settings=new PortalSettings("151",12,3,null,null);
-                new AdminDeleteJourney(settings,new AdminCleanupProperties(false,"http://127.0.0.1:"+server.getAddress().getPort()+"/admin",credentialsDirectory.toString())).execute(DeleteInput.from(input),run);
+                String localAdmin="http://127.0.0.1:"+server.getAddress().getPort()+"/admin";
+                new AdminDeleteJourney(settings,new AdminCleanupProperties(false,localAdmin,credentialsDirectory.toString(),localAdmin,credentialsDirectory.toString())).execute(DeleteInput.from(input),run);
                 assertThat(run.status).withFailMessage("%s",run.error).isEqualTo("SUCCEEDED");assertThat(run.workflowStage).isEqualTo(WorkflowStage.COMPLETED);
                 assertThat(run.otpEntered).isFalse();assertThat(run.otpSubmitted).isFalse();assertThat(logins).hasValue(1);assertThat(deletes).hasValue(1);assertThat(screenshotBeforeDelete).isTrue();
                 assertThat(Files.isRegularFile(RunScreenshots.path(run.id,"result-page"))).isFalse();assertThat(Files.size(RunScreenshots.path(run.id,"admin-delete-success"))).isGreaterThan(100);
